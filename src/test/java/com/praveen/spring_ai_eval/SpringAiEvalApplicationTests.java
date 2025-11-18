@@ -4,6 +4,7 @@ import com.praveen.spring_ai_eval.controller.ChatController;
 import org.junit.jupiter.api.*;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
+import org.springframework.ai.chat.evaluation.FactCheckingEvaluator;
 import org.springframework.ai.chat.evaluation.RelevancyEvaluator;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.evaluation.EvaluationRequest;
@@ -35,12 +36,17 @@ class SpringAiEvalApplicationTests {
 
     private final float minRelevancyScore = 0.7F;
 
+    private FactCheckingEvaluator factCheckingEvaluator;
+
     @BeforeEach
     void setup() {
         ChatClient.Builder builder = ChatClient.builder(chatModel)
                 .defaultAdvisors(new SimpleLoggerAdvisor());
         this.chatClient = builder.build();
         this.relevancyEvaluator = new RelevancyEvaluator(builder);
+        this.factCheckingEvaluator = FactCheckingEvaluator
+                .builder(builder)
+                .build();
     }
 
 	@Test
@@ -64,6 +70,28 @@ class SpringAiEvalApplicationTests {
                 () -> assertThat(evaluateResponse.getScore())
                 .withFailMessage("Evaluation score for question: " + question + " is less than " + minRelevancyScore)
                         .isGreaterThan(minRelevancyScore)
+        );
+
+    }
+
+    @Test
+    @DisplayName("Should return factual information for gravity question")
+    @Timeout(30)
+    void evaluateFactAccuracyForGravityQuestion(){
+        //Given
+        String question = "Who discovered the law of gravity?";
+
+        //When
+        String response = chatController.chat(question);
+
+        EvaluationRequest evaluationRequest = new EvaluationRequest(question,response);
+        EvaluationResponse evaluateResponse = factCheckingEvaluator.evaluate(evaluationRequest);
+
+        Assertions.assertAll(
+                () -> assertThat(response).isNotBlank(),
+                () -> assertThat(evaluateResponse.isPass())
+                        .withFailMessage("Answer was not factually correct for the question: " + question)
+                        .isTrue()
         );
 
     }
